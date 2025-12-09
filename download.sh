@@ -42,17 +42,18 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
   
   # Extract table, convert to CSV
   cat "$TEMP_FILE" |
-    tr '\n\r' ' ' |                                    # Single line
-    sed 's|<[tT][aA][bB][lL][eE]|\n<table|g' |         # Split tables onto new lines
-    grep -i '<table' | head -1 |                       # Get first table
-    sed 's|</[tT][rR]>|\n|g' |                         # Each row on new line
-    sed 's|<[tT][dDhH][^>]*>|,|g' |                    # Replace td/th with comma
-    sed 's|<[^>]*>||g' |                               # Strip remaining HTML tags
-    sed 's|&nbsp;| |g; s|&amp;|\&|g; s|&lt;|<|g; s|&gt;|>|g' |  # Decode entities
-    sed 's/^,//' |                                     # Remove leading comma
-    sed 's/[[:space:]]\+/ /g' |                        # Collapse whitespace
-    sed 's/ ,/,/g; s/, /,/g' |                         # Clean around commas
-    grep -v '^[[:space:]]*$' > "$CSV_FILE"            # Remove empty lines
+    tr '\n\r' ' ' |
+    sed 's|<[tT][aA][bB][lL][eE]|\n<table|g' |
+    grep -i '<table' | head -1 |
+    sed 's|</[tT][rR]>|\n|g' |
+    sed 's|<[tT][dDhH][^>]*>|,|g' |
+    sed 's|<[^>]*>||g' |
+    sed 's|&nbsp;| |g; s|&amp;|\&|g; s|&lt;|<|g; s|&gt;|>|g' |
+    sed 's/^,//' |
+    sed 's/[[:space:]]\+/ /g' |
+    sed 's/ ,/,/g; s/, /,/g' |
+    sed '/General Disclaimer/,$d' |                   # Stop before disclaimer
+    grep -v '^[[:space:]]*$' > "$CSV_FILE"
   
   rm -f "$TEMP_FILE"
   echo "Saved: $CSV_FILE"
