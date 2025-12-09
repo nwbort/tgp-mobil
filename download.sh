@@ -40,12 +40,21 @@ FILENAME=$(echo "$URL" | sed -E 's|^https?://||' | sed -E 's|^www\.||' | sed 's|
 if [[ "$MIME_TYPE" == "text/html" ]]; then
   CSV_FILE="${FILENAME}.csv"
   
+  # Extract date and convert to yyyy-mm-dd
+  AS_AT_DATE=$(grep -oiE 'as at [0-9]+ [A-Za-z]+ [0-9]+' "$TEMP_FILE" | head -1 | \
+    sed 's/[aA]s at //' | \
+    awk '{
+      split("January February March April May June July August September October November December", m, " ")
+      for (i=1; i<=12; i++) mon[m[i]] = sprintf("%02d", i)
+      printf "%s-%s-%02d", $3, mon[$2], $1
+    }')
+  
   cat "$TEMP_FILE" |
     tr '\n\r' ' ' |
     sed 's|<[tT][aA][bB][lL][eE]|\n<table|g' |
     grep -i '<table' | head -1 |
     sed 's|</[tT][rR]>|\n|g' |
-    awk '
+    awk -v as_at="$AS_AT_DATE" '
     BEGIN { max_col = 20; first_row = 1 }
     {
       for (i = 1; i <= max_col; i++) {
@@ -102,7 +111,10 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         if (out !~ /^[[:space:],]*$/ && out !~ /General Disclaimer/) {
           if (first_row) {
             sub(/^Terminal Locations/, "State,Terminal Locations", out)
+            out = out ",Date"
             first_row = 0
+          } else {
+            out = out "," as_at
           }
           print out
         }
