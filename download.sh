@@ -40,20 +40,77 @@ FILENAME=$(echo "$URL" | sed -E 's|^https?://||' | sed -E 's|^www\.||' | sed 's|
 if [[ "$MIME_TYPE" == "text/html" ]]; then
   CSV_FILE="${FILENAME}.csv"
   
-  # Extract table, convert to CSV
+  # Extract first table, put each row on its own line
   cat "$TEMP_FILE" |
     tr '\n\r' ' ' |
     sed 's|<[tT][aA][bB][lL][eE]|\n<table|g' |
     grep -i '<table' | head -1 |
     sed 's|</[tT][rR]>|\n|g' |
-    sed 's|<[tT][dDhH][^>]*>|,|g' |
-    sed 's|<[^>]*>||g' |
-    sed 's|&nbsp;| |g; s|&amp;|\&|g; s|&lt;|<|g; s|&gt;|>|g' |
-    sed 's/^,//' |
-    sed 's/[[:space:]]\+/ /g' |
-    sed 's/ ,/,/g; s/, /,/g' |
-    sed '/General Disclaimer/,$d' |                   # Stop before disclaimer
-    grep -v '^[[:space:]]*$' > "$CSV_FILE"
+    awk '
+    {
+      # Insert any pending rowspan values
+      col = 1
+      while (rowspan[col] > 0) {
+        cells[col] = rowspan_val[col]
+        rowspan[col]--
+        col++
+      }
+      
+      # Parse cells from this row
+      line = $0
+      while (match(line, /<[tT][hHdD][^>]*>/)) {
+        # Skip columns that have active rowspans
+        while (rowspan[col] > 0) {
+          rowspan[col]--
+          col++
+        }
+        
+        tag = substr(line, RSTART, RLENGTH)
+        line = substr(line, RSTART + RLENGTH)
+        
+        # Extract rowspan if present
+        rs = 1
+        if (match(tag, /rowspan="?[0-9]+/)) {
+          rs_str = substr(tag, RSTART, RLENGTH)
+          gsub(/[^0-9]/, "", rs_str)
+          rs = int(rs_str)
+        }
+        
+        # Extract cell content (up to next tag)
+        content = ""
+        if (match(line, /</)) {
+          content = substr(line, 1, RSTART - 1)
+        }
+        
+        # Clean content
+        gsub(/&nbsp;/, " ", content)
+        gsub(/&amp;/, "\\&", content)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", content)
+        gsub(/[[:space:]]+/, " ", content)
+        
+        cells[col] = content
+        
+        if (rs > 1) {
+          rowspan[col] = rs - 1
+          rowspan_val[col] = content
+        }
+        
+        col++
+      }
+      
+      # Output row if we have cells
+      if (col > 1) {
+        out = ""
+        for (i = 1; i < col; i++) {
+          out = out (i > 1 ? "," : "") cells[i]
+          cells[i] = ""
+        }
+        if (out !~ /^[[:space:],]*$/ && out !~ /General Disclaimer/) {
+          print out
+        }
+      }
+    }
+    ' > "$CSV_FILE"
   
   rm -f "$TEMP_FILE"
   echo "Saved: $CSV_FILE"
