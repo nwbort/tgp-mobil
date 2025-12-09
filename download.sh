@@ -5,6 +5,11 @@
 
 set -e
 
+# Common headers to mimic a real browser
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+ACCEPT="text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+ACCEPT_LANGUAGE="en-AU,en;q=0.9,en-US;q=0.8"
+
 # Function to detect MIME type and return appropriate extension
 get_file_extension() {
   local file_path="$1"
@@ -49,9 +54,16 @@ fi
 # Create temporary file
 TEMP_FILE=$(mktemp)
 
-# Download the file
+# Download the file with browser-like headers
 echo "Downloading $URL"
-curl -s -L "$URL" -o "$TEMP_FILE" || {
+curl -s -L "$URL" \
+  -H "User-Agent: $USER_AGENT" \
+  -H "Accept: $ACCEPT" \
+  -H "Accept-Language: $ACCEPT_LANGUAGE" \
+  -H "Accept-Encoding: identity" \
+  -H "Connection: keep-alive" \
+  -H "Upgrade-Insecure-Requests: 1" \
+  -o "$TEMP_FILE" || {
   echo "Error: Failed to download $URL"
   rm -f "$TEMP_FILE"
   exit 1
