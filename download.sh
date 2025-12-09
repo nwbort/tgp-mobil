@@ -46,7 +46,7 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
     grep -i '<table' | head -1 |
     sed 's|</[tT][rR]>|\n|g' |
     awk '
-    BEGIN { max_col = 20 }
+    BEGIN { max_col = 20; first_row = 1 }
     {
       for (i = 1; i <= max_col; i++) {
         if (rowspan[i] > 0) {
@@ -65,7 +65,6 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         cell = substr(line, RSTART, RLENGTH)
         line = substr(line, RSTART + RLENGTH)
         
-        # Extract rowspan
         rs = 1
         if (match(cell, /rowspan="?[0-9]+/)) {
           rs_str = substr(cell, RSTART, RLENGTH)
@@ -73,7 +72,6 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
           rs = int(rs_str)
         }
         
-        # Strip all HTML tags to get content
         content = cell
         gsub(/<[^>]*>/, "", content)
         gsub(/&nbsp;/, " ", content)
@@ -91,7 +89,6 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         col++
       }
       
-      # Find max column with content
       max = 0
       for (i = 1; i <= max_col; i++) {
         if (cells[i] != "") max = i
@@ -103,6 +100,10 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
           out = out (i > 1 ? "," : "") cells[i]
         }
         if (out !~ /^[[:space:],]*$/ && out !~ /General Disclaimer/) {
+          if (first_row) {
+            sub(/^Terminal Locations/, "State,Terminal Locations", out)
+            first_row = 0
+          }
           print out
         }
       }
