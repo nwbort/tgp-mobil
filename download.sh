@@ -48,7 +48,6 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
     awk '
     BEGIN { max_col = 20 }
     {
-      # Clear cells, then fill in active rowspans
       for (i = 1; i <= max_col; i++) {
         if (rowspan[i] > 0) {
           cells[i] = rowspan_val[i]
@@ -58,31 +57,25 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         }
       }
       
-      # Parse cells from this row
       col = 1
       line = $0
-      while (match(line, /<[tT][hHdD][^>]*>/)) {
-        # Skip to next column not occupied by rowspan
+      while (match(line, /<[tT][hHdD][^>]*>[^<]*((<[^\/][^>]*>[^<]*)*(<\/[^tT][^>]*>[^<]*)*)*<\/[tT][hHdD]>/)) {
         while (cells[col] != "") col++
         
-        tag = substr(line, RSTART, RLENGTH)
+        cell = substr(line, RSTART, RLENGTH)
         line = substr(line, RSTART + RLENGTH)
         
-        # Extract rowspan if present
+        # Extract rowspan
         rs = 1
-        if (match(tag, /rowspan="?[0-9]+/)) {
-          rs_str = substr(tag, RSTART, RLENGTH)
+        if (match(cell, /rowspan="?[0-9]+/)) {
+          rs_str = substr(cell, RSTART, RLENGTH)
           gsub(/[^0-9]/, "", rs_str)
           rs = int(rs_str)
         }
         
-        # Extract cell content
-        content = ""
-        if (match(line, /</)) {
-          content = substr(line, 1, RSTART - 1)
-        }
-        
-        # Clean content
+        # Strip all HTML tags to get content
+        content = cell
+        gsub(/<[^>]*>/, "", content)
         gsub(/&nbsp;/, " ", content)
         gsub(/&amp;/, "\\&", content)
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", content)
@@ -98,10 +91,15 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         col++
       }
       
-      # Output row
-      if (col > 1) {
+      # Find max column with content
+      max = 0
+      for (i = 1; i <= max_col; i++) {
+        if (cells[i] != "") max = i
+      }
+      
+      if (max > 0) {
         out = ""
-        for (i = 1; i < col || cells[i] != ""; i++) {
+        for (i = 1; i <= max; i++) {
           out = out (i > 1 ? "," : "") cells[i]
         }
         if (out !~ /^[[:space:],]*$/ && out !~ /General Disclaimer/) {
