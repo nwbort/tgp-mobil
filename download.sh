@@ -40,30 +40,30 @@ FILENAME=$(echo "$URL" | sed -E 's|^https?://||' | sed -E 's|^www\.||' | sed 's|
 if [[ "$MIME_TYPE" == "text/html" ]]; then
   CSV_FILE="${FILENAME}.csv"
   
-  # Extract first table, put each row on its own line
   cat "$TEMP_FILE" |
     tr '\n\r' ' ' |
     sed 's|<[tT][aA][bB][lL][eE]|\n<table|g' |
     grep -i '<table' | head -1 |
     sed 's|</[tT][rR]>|\n|g' |
     awk '
+    BEGIN { max_col = 20 }
     {
-      # Insert any pending rowspan values
-      col = 1
-      while (rowspan[col] > 0) {
-        cells[col] = rowspan_val[col]
-        rowspan[col]--
-        col++
+      # Clear cells, then fill in active rowspans
+      for (i = 1; i <= max_col; i++) {
+        if (rowspan[i] > 0) {
+          cells[i] = rowspan_val[i]
+          rowspan[i]--
+        } else {
+          cells[i] = ""
+        }
       }
       
       # Parse cells from this row
+      col = 1
       line = $0
       while (match(line, /<[tT][hHdD][^>]*>/)) {
-        # Skip columns that have active rowspans
-        while (rowspan[col] > 0) {
-          rowspan[col]--
-          col++
-        }
+        # Skip to next column not occupied by rowspan
+        while (cells[col] != "") col++
         
         tag = substr(line, RSTART, RLENGTH)
         line = substr(line, RSTART + RLENGTH)
@@ -76,7 +76,7 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
           rs = int(rs_str)
         }
         
-        # Extract cell content (up to next tag)
+        # Extract cell content
         content = ""
         if (match(line, /</)) {
           content = substr(line, 1, RSTART - 1)
@@ -98,12 +98,11 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
         col++
       }
       
-      # Output row if we have cells
+      # Output row
       if (col > 1) {
         out = ""
-        for (i = 1; i < col; i++) {
+        for (i = 1; i < col || cells[i] != ""; i++) {
           out = out (i > 1 ? "," : "") cells[i]
-          cells[i] = ""
         }
         if (out !~ /^[[:space:],]*$/ && out !~ /General Disclaimer/) {
           print out
