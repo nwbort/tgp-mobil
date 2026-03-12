@@ -41,8 +41,9 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
   CSV_FILE="${FILENAME}.csv"
   
   # Extract date and convert to yyyy-mm-dd
-  AS_AT_DATE=$(grep -oiE 'as at [0-9]+ [A-Za-z]+ [0-9]+' "$TEMP_FILE" | head -1 | \
+  AS_AT_DATE=$(grep -oiE 'as at [0-9]+(st|nd|rd|th)? [A-Za-z]+ [0-9]+' "$TEMP_FILE" | head -1 | \
     sed 's/[aA]s at //' | \
+    sed 's/\([0-9]\)\(st\|nd\|rd\|th\)/\1/' | \
     awk '{
       split("January February March April May June July August September October November December", m, " ")
       for (i=1; i<=12; i++) mon[m[i]] = sprintf("%02d", i)
