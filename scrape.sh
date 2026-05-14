@@ -27,3 +27,6 @@ if [ -f "$CSV_NAME" ]; then
     fi
   done
 fi
+
+# Regenerate the normalised CSV and JSON from scratch
+python3 normalise.py
