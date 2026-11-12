@@ -2,6 +2,8 @@
 CSV_NAME="mobil.com.au-en-au-commercial-fuels-terminal-gate.csv"
 HISTORY_FILE="tgp-mobil-history.csv"
 
+set -e
+
 ./download.sh 'https://www.mobil.com.au/en-au/commercial-fuels/terminal-gate'
 
 # Append new data to history CSV (deduplicated)

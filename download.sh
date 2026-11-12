@@ -5,9 +5,24 @@
 
 set -e
 
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-ACCEPT="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-ACCEPT_LANGUAGE="en-AU,en;q=0.9"
+# Mirror a real Chrome navigation request. Mobil's CDN (Akamai) returns
+# 403 "Access Denied" to requests with only a bare User-Agent/Accept.
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+BROWSER_HEADERS=(
+  -H "User-Agent: $USER_AGENT"
+  -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+  -H "Accept-Language: en-AU,en-GB;q=0.9,en-US;q=0.8,en;q=0.7"
+  -H "Cache-Control: max-age=0"
+  -H "Priority: u=0, i"
+  -H 'sec-ch-ua: "Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"'
+  -H "sec-ch-ua-mobile: ?0"
+  -H 'sec-ch-ua-platform: "Windows"'
+  -H "Sec-Fetch-Dest: document"
+  -H "Sec-Fetch-Mode: navigate"
+  -H "Sec-Fetch-Site: none"
+  -H "Sec-Fetch-User: ?1"
+  -H "Upgrade-Insecure-Requests: 1"
+)
 
 if [ $# -ne 1 ]; then
   echo "Usage: $0 URL"
@@ -24,15 +39,22 @@ fi
 TEMP_FILE=$(mktemp)
 
 echo "Downloading $URL"
-curl -s -L "$URL" \
-  -H "User-Agent: $USER_AGENT" \
-  -H "Accept: $ACCEPT" \
-  -H "Accept-Language: $ACCEPT_LANGUAGE" \
-  -o "$TEMP_FILE" || {
+HTTP_STATUS=$(curl -sS -L --compressed "$URL" \
+  "${BROWSER_HEADERS[@]}" \
+  -o "$TEMP_FILE" -w '%{http_code}') || {
   echo "Error: Failed to download $URL"
   rm -f "$TEMP_FILE"
   exit 1
 }
+
+echo "HTTP status: $HTTP_STATUS"
+if [ "$HTTP_STATUS" != "200" ]; then
+  echo "Error: $URL returned HTTP $HTTP_STATUS (likely blocked). Response body:" >&2
+  head -c 2000 "$TEMP_FILE" >&2
+  echo >&2
+  rm -f "$TEMP_FILE"
+  exit 1
+fi
 
 MIME_TYPE=$(file --mime-type -b "$TEMP_FILE")
 FILENAME=$(echo "$URL" | sed -E 's|^https?://||' | sed -E 's|^www\.||' | sed 's|/$||' | sed 's|/|-|g')
@@ -123,8 +145,18 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
     }
     ' > "$CSV_FILE"
   
+  # Sanity check: we expect a date and at least one data row
+  DATA_ROWS=$(tail -n +2 "$CSV_FILE" | grep -c . || true)
+  if [ -z "$AS_AT_DATE" ] || [ "$DATA_ROWS" -eq 0 ]; then
+    echo "Error: no price table or 'as at' date found in page (rows=$DATA_ROWS, date='$AS_AT_DATE')" >&2
+    head -c 2000 "$TEMP_FILE" >&2
+    echo >&2
+    rm -f "$TEMP_FILE" "$CSV_FILE"
+    exit 1
+  fi
+
   rm -f "$TEMP_FILE"
-  echo "Saved: $CSV_FILE"
+  echo "Saved: $CSV_FILE ($DATA_ROWS rows, as at $AS_AT_DATE)"
 else
   mv "$TEMP_FILE" "${FILENAME}"
   echo "Saved: ${FILENAME}"
