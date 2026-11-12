@@ -24,15 +24,24 @@ fi
 TEMP_FILE=$(mktemp)
 
 echo "Downloading $URL"
-curl -s -L "$URL" \
+HTTP_STATUS=$(curl -sS -L "$URL" \
   -H "User-Agent: $USER_AGENT" \
   -H "Accept: $ACCEPT" \
   -H "Accept-Language: $ACCEPT_LANGUAGE" \
-  -o "$TEMP_FILE" || {
+  -o "$TEMP_FILE" -w '%{http_code}') || {
   echo "Error: Failed to download $URL"
   rm -f "$TEMP_FILE"
   exit 1
 }
+
+echo "HTTP status: $HTTP_STATUS"
+if [ "$HTTP_STATUS" != "200" ]; then
+  echo "Error: $URL returned HTTP $HTTP_STATUS (likely blocked). Response body:" >&2
+  head -c 2000 "$TEMP_FILE" >&2
+  echo >&2
+  rm -f "$TEMP_FILE"
+  exit 1
+fi
 
 MIME_TYPE=$(file --mime-type -b "$TEMP_FILE")
 FILENAME=$(echo "$URL" | sed -E 's|^https?://||' | sed -E 's|^www\.||' | sed 's|/$||' | sed 's|/|-|g')
@@ -123,8 +132,18 @@ if [[ "$MIME_TYPE" == "text/html" ]]; then
     }
     ' > "$CSV_FILE"
   
+  # Sanity check: we expect a date and at least one data row
+  DATA_ROWS=$(tail -n +2 "$CSV_FILE" | grep -c . || true)
+  if [ -z "$AS_AT_DATE" ] || [ "$DATA_ROWS" -eq 0 ]; then
+    echo "Error: no price table or 'as at' date found in page (rows=$DATA_ROWS, date='$AS_AT_DATE')" >&2
+    head -c 2000 "$TEMP_FILE" >&2
+    echo >&2
+    rm -f "$TEMP_FILE" "$CSV_FILE"
+    exit 1
+  fi
+
   rm -f "$TEMP_FILE"
-  echo "Saved: $CSV_FILE"
+  echo "Saved: $CSV_FILE ($DATA_ROWS rows, as at $AS_AT_DATE)"
 else
   mv "$TEMP_FILE" "${FILENAME}"
   echo "Saved: ${FILENAME}"
